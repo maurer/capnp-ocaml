@@ -654,8 +654,7 @@ let rec collect_unique_types ?acc ~context node =
   | PS.Node.Annotation _
   | PS.Node.Enum _ ->
       names
-  | PS.Node.Struct _
-  | PS.Node.Interface _ ->
+  | PS.Node.Struct _ ->
       let reader_name = make_unique_typename ~context
           ~mode:Mode.Reader node
       in
@@ -665,6 +664,19 @@ let rec collect_unique_types ?acc ~context node =
       in
       let builder_type = "rw MessageWrapper.StructStorage.t" in
       (builder_name, builder_type) :: (reader_name, reader_type) :: names
+  | PS.Node.Interface iface_node ->
+      (* For each method *)
+      List.concat_map (PS.Node.Interface.methods_get_list iface_node)
+                      ~f:(fun mthd ->
+        (* Node ID -> Node *)
+        let node_of_id key = Hashtbl.find_exn context.Context.nodes key in
+        (* Load parameter and result structs *)
+        collect_unique_types ~acc:(
+          collect_unique_types
+            ~context
+            (node_of_id (PS.Method.param_struct_type_get mthd)))
+          ~context
+          (node_of_id (PS.Method.result_struct_type_get mthd)))
   | PS.Node.Undefined x ->
       failwith (sprintf "Unknown Node union discriminant %u" x)
 

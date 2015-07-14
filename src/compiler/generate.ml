@@ -162,17 +162,19 @@ let string_of_lines lines =
 let compile
     (request : PS.CodeGeneratorRequest.t)
   : unit =
+  (* Load request nodes into a hashtable *)
   let nodes_table = Hashtbl.Poly.create () in
   let nodes = PS.CodeGeneratorRequest.nodes_get request in
-  let () = C.Array.iter nodes ~f:(fun node ->
-      Hashtbl.replace nodes_table ~key:(PS.Node.id_get node) ~data:node)
-  in
+  C.Array.iter nodes ~f:(fun node ->
+      Hashtbl.replace nodes_table ~key:(PS.Node.id_get node) ~data:node);
+  (* Compile each file separately *)
   let requested_files = PS.CodeGeneratorRequest.requested_files_get request in
   C.Array.iter requested_files ~f:(fun requested_file ->
     let open PS.CodeGeneratorRequest in
     let requested_file_id = RequestedFile.id_get requested_file in
     let requested_file_node = Hashtbl.find_exn nodes_table requested_file_id in
     let requested_filename = RequestedFile.filename_get requested_file in
+    (* Wrap up imports, using original filename (not pet name) to name them *)
     let imports = C.Array.map_list (RequestedFile.imports_get requested_file)
         ~f:(fun import ->
           let import_id = RequestedFile.Import.id_get import in
@@ -189,6 +191,7 @@ let compile
       Context.nodes   = nodes_table;
       Context.imports = imports;
     } in
+    (* Generate a global unique name for every builder/reader type *)
     let sig_unique_types = List.rev_map
         (GenCommon.collect_unique_types ~context requested_file_node)
         ~f:(fun (name, tp) -> "  type " ^ name)
