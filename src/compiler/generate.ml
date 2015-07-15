@@ -191,35 +191,44 @@ let compile
       Context.nodes   = nodes_table;
       Context.imports = imports;
     } in
+    (* Generate top level declarations of various types to avoid recursive
+     * modules.
+     *)
     (* Generate a global unique name for every builder/reader type *)
     let sig_unique_types = List.rev_map
         (GenCommon.collect_unique_types ~context requested_file_node)
         ~f:(fun (name, tp) -> "  type " ^ name)
     in
+    (* Generate enum types at the schema top level *)
     let sig_unique_enums =
       GenCommon.apply_indent ~indent:"  "
         (GenCommon.collect_unique_enums ~is_sig:true ~context
            ~node_name:requested_filename requested_file_node)
     in
+    (* Generate a version of the global type declaration with definition *)
     let mod_unique_types = (List.rev_map
         (GenCommon.collect_unique_types ~context requested_file_node)
         ~f:(fun (name, tp) -> "  type " ^ name ^ " = " ^ tp)) @ [""]
     in
+    (* Generate a definition version of the global enum types *)
     let mod_unique_enums =
       GenCommon.apply_indent ~indent:"  "
         (GenCommon.collect_unique_enums ~is_sig:false ~context
            ~node_name:requested_filename requested_file_node)
     in
+    (* Merge signature components together *)
     let sig_s =
       (sig_s_header ~context) @
       sig_unique_types @
       sig_unique_enums @
       sig_s_reader_header @
+      (* Generate Reader + Client Signatures *)
       (GenCommon.apply_indent ~indent:"    "
         (GenSignatures.generate_node ~suppress_module_wrapper:true ~context
            ~scope:[] ~mode:Mode.Reader ~node_name:requested_filename
            requested_file_node)) @
       sig_s_divide_reader_builder @
+      (* Generate Builder + Server Signatures *)
       (GenCommon.apply_indent ~indent:"    "
         (GenSignatures.generate_node ~suppress_module_wrapper:true ~context
            ~scope:[] ~mode:Mode.Builder ~node_name:requested_filename

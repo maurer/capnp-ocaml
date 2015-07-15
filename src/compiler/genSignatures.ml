@@ -266,7 +266,7 @@ let generate_accessors ~context ~scope ~mode
  * out what module prefixes are required to properly qualify a type.
  *
  * Raises: Failure if the children of this node contain a cycle. *)
-let generate_struct_node ~context ~scope ~nested_modules
+let generate_struct_node ?def_name ~context ~scope ~nested_modules
     ~mode ~node struct_def : string list =
   let unsorted_fields =
     C.Array.to_list (PS.Node.Struct.fields_get struct_def)
@@ -297,10 +297,10 @@ let generate_struct_node ~context ~scope ~nested_modules
     in
     generate_accessors ~context ~scope ~mode ~f:selector non_union_fields
   in
-  let unique_reader = GenCommon.make_unique_typename ~mode:Mode.Reader
+  let unique_reader = GenCommon.make_unique_typename ?def_name ~mode:Mode.Reader
       ~context node
   in
-  let unique_builder = GenCommon.make_unique_typename ~mode:Mode.Builder
+  let unique_builder = GenCommon.make_unique_typename ?def_name ~mode:Mode.Builder
       ~context node
   in
   let header =
@@ -372,7 +372,7 @@ let rec generate_node
   | Struct struct_def ->
       let nested_modules = generate_nested_modules () in
       let body =
-        generate_struct_node ~context ~scope ~nested_modules ~mode 
+        generate_struct_node ~def_name:node_name ~context ~scope ~nested_modules ~mode
           ~node struct_def
       in
       if suppress_module_wrapper then
@@ -396,7 +396,43 @@ let rec generate_node
           (apply_indent ~indent:"  " body) @
           [ "end" ]
   | Interface iface_def ->
-      let body = generate_nested_modules () in
+      let nested_modules = generate_nested_modules () in
+      (* Select i/o mode based on client vs server *)
+      let (param_mode, result_mode) =
+        match mode with
+          (* Client *)
+          | Mode.Reader  -> (Mode.Builder, Mode.Reader)
+          (* Server *)
+          | Mode.Builder -> (Mode.Reader, Mode.Builder) in
+      (* Each method gets a parameter/result encoding module *)
+      let method_modules = List.concat_map
+        (PS.Node.Interface.methods_get_list iface_def)
+        ~f:(fun mthd ->
+          [ "module " ^ (String.capitalize (PS.Method.name_get mthd)) ^
+            " : sig" ] @
+          (apply_indent ~indent:"  "
+            (let param_node  = Hashtbl.find_exn
+                                 context.Context.nodes
+                                 (PS.Method.param_struct_type_get mthd)
+             and result_node = Hashtbl.find_exn
+                                 context.Context.nodes
+                                 (PS.Method.result_struct_type_get mthd) in
+             let param_mod   = generate_node ~suppress_module_wrapper:false
+                                             ~context
+                                             ~scope:[]
+                                             ~mode:param_mode
+                                             ~node_name:"Params"
+                                             param_node
+             and result_mod  = generate_node ~suppress_module_wrapper:false
+                                             ~context
+                                             ~scope:[]
+                                             ~mode:result_mode
+                                             ~node_name:"Results"
+                                             result_node
+             in param_mod @ result_mod)) @
+          [ "end" ]
+        ) in
+      let body = nested_modules @ method_modules in
       if suppress_module_wrapper then
         body
       else

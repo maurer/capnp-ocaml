@@ -263,7 +263,7 @@ let make_unique_enum_module_name ~context enum_node =
   (String.capitalize uq_name) ^ "_" ^ (Uint64.to_string node_id)
 
 
-let make_unique_typename ~context ~(mode : Mode.t) node =
+let make_unique_typename ?def_name ~context ~(mode : Mode.t) node =
   match PS.Node.get node with
   | PS.Node.Enum enum_def ->
       (* Enums don't have unique type names, they have unique module names.  This
@@ -276,7 +276,12 @@ let make_unique_typename ~context ~(mode : Mode.t) node =
         | Mode.Reader  -> "reader_t"
         | Mode.Builder -> "builder_t"
       in
-      let uq_name = get_unqualified_name
+      let scope_id = PS.Node.scope_id_get node in
+      let uq_name = if (Uint64.compare scope_id Uint64.zero) = 0
+        then match def_name with
+               | Some name -> name
+               | None -> failwith "No scope and no default name"
+        else get_unqualified_name
           ~parent:(Hashtbl.find_exn context.Context.nodes
               (PS.Node.scope_id_get node))
           ~child:node
@@ -639,7 +644,7 @@ let generate_enum_sig ?unique_module_name enum_def =
 
 (* Recurse through the schema, collecting unique type names and type
    definitions for all the nodes. *)
-let rec collect_unique_types ?acc ~context node =
+let rec collect_unique_types ?def_name ?acc ~context node =
   let child_type_names = List.concat_map (children_of ~context node)
       ~f:(fun child -> collect_unique_types ~context child)
   in
@@ -655,11 +660,11 @@ let rec collect_unique_types ?acc ~context node =
   | PS.Node.Enum _ ->
       names
   | PS.Node.Struct _ ->
-      let reader_name = make_unique_typename ~context
+      let reader_name = make_unique_typename ?def_name ~context
           ~mode:Mode.Reader node
       in
       let reader_type = "ro MessageWrapper.StructStorage.t option" in
-      let builder_name = make_unique_typename ~context
+      let builder_name = make_unique_typename ?def_name ~context
           ~mode:Mode.Builder node
       in
       let builder_type = "rw MessageWrapper.StructStorage.t" in
@@ -671,12 +676,15 @@ let rec collect_unique_types ?acc ~context node =
         (* Node ID -> Node *)
         let node_of_id key = Hashtbl.find_exn context.Context.nodes key in
         (* Load parameter and result structs *)
-        collect_unique_types ~acc:(
+        let param_node  = node_of_id (PS.Method.param_struct_type_get mthd)
+        and result_node = node_of_id (PS.Method.result_struct_type_get mthd) in
+        collect_unique_types ~def_name:"Results" ~acc:(
           collect_unique_types
+            ~def_name:"Params"
             ~context
-            (node_of_id (PS.Method.param_struct_type_get mthd)))
+            param_node)
           ~context
-          (node_of_id (PS.Method.result_struct_type_get mthd)))
+          result_node)
   | PS.Node.Undefined x ->
       failwith (sprintf "Unknown Node union discriminant %u" x)
 
