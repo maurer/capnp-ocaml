@@ -43,6 +43,8 @@ let sig_s_header ~context = [
   "";
   "module type S = sig";
   "  type 'cap message_t";
+  "  type reader_pointer_t";
+  "  type builder_pointer_t";
   "";
 ] @ (List.concat_map context.Context.imports ~f:(fun import -> [
       "  module " ^ import.Context.schema_name ^ " : " ^
@@ -56,7 +58,7 @@ let sig_s_reader_header = [
   "  module Reader : sig";
   "    type array_t";
   "    type builder_array_t";
-  "    type pointer_t";
+  "    type pointer_t = reader_pointer_t";
 ]
 
 let sig_s_divide_reader_builder = [
@@ -65,7 +67,7 @@ let sig_s_divide_reader_builder = [
   "  module Builder : sig";
   "    type array_t = Reader.builder_array_t";
   "    type reader_array_t = Reader.array_t";
-  "    type pointer_t";
+  "    type pointer_t = builder_pointer_t";
 ]
 
 let sig_s_footer = [
@@ -78,8 +80,8 @@ let sig_s_footer = [
 let functor_sig ~context = [
   "module Make (MessageWrapper : Capnp.MessageSig.S) :";
   "  (S with type 'cap message_t = 'cap MessageWrapper.Message.t";
-  "    and type Reader.pointer_t = ro MessageWrapper.Slice.t option";
-  "    and type Builder.pointer_t = rw MessageWrapper.Slice.t"; ] @
+  "    and type reader_pointer_t = ro MessageWrapper.Slice.t option";
+  "    and type builder_pointer_t = rw MessageWrapper.Slice.t"; ] @
   (List.concat_map context.Context.imports ~f:(fun import -> [
         "    and module " ^ import.Context.schema_name ^ " = " ^
           import.Context.module_name ^ ".Make(MessageWrapper)";
@@ -107,6 +109,8 @@ let mod_header ~context = [
   "  end";
   "";
   "  type 'cap message_t = 'cap MessageWrapper.Message.t";
+  "  type reader_pointer_t = ro MessageWrapper.Slice.t option";
+  "  type builder_pointer_t = rw MessageWrapper.Slice.t";
   ""; ] @ (List.concat_map context.Context.imports ~f:(fun import -> [
       "  module " ^ import.Context.schema_name ^ " = " ^
           import.Context.module_name ^ ".Make(MessageWrapper)";
@@ -118,7 +122,7 @@ let mod_reader_header = [
   "  module Reader = struct";
   "    type array_t = ro MessageWrapper.ListStorage.t";
   "    type builder_array_t = rw MessageWrapper.ListStorage.t";
-  "    type pointer_t = ro MessageWrapper.Slice.t option";
+  "    type pointer_t = reader_pointer_t";
   "";
 ]
 
@@ -128,7 +132,7 @@ let mod_divide_reader_builder = [
   "  module Builder = struct";
   "    type array_t = Reader.builder_array_t";
   "    type reader_array_t = Reader.array_t";
-  "    type pointer_t = rw MessageWrapper.Slice.t";
+  "    type pointer_t = builder_pointer_t";
   "";
 ]
 
